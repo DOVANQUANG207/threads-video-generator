@@ -36,45 +36,46 @@ BANNER = """
  ╚═██╔═╝  ╚═════╝  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
 """
 
-# --- GIAO DIỆN THREADS SIÊU ĐẸP ---
+# --- GIAO DIỆN THREADS SIÊU ĐẸP & GỌN GÀNG ---
 def tao_anh_giao_dien_threads_gia(text):
     os.makedirs("assets/temp/png", exist_ok=True)
     with sync_playwright() as p:
         install_playwright_browsers()
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(device_scale_factor=3) # Tăng độ nét lên x3
+        page = browser.new_page(device_scale_factor=3)
         
-        # Xử lý text để không bị lỗi HTML
         safe_text = pyhtml.escape(text).replace('\n', '<br>')
 
-        # Code HTML/CSS làm giao diện cực xịn xò, nền trong suốt
+        # Bọc thẻ card trong capture_area có padding để thu nhỏ card lại trên video
         html_content = f"""
         <!DOCTYPE html>
         <html>
-        <body style="background: transparent; margin: 0; display: flex; justify-content: center; align-items: center; padding: 20px;">
-            <div id="card" style="background: rgba(24, 24, 24, 0.85); border: 1px solid #444; border-radius: 25px; padding: 40px; color: white; width: 850px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; box-shadow: 0 15px 35px rgba(0,0,0,0.6); backdrop-filter: blur(10px);">
-                <div style="display: flex; align-items: center; margin-bottom: 25px;">
-                    <img src="https://ui-avatars.com/api/?name=Quang+ICTU&background=random&size=120" style="width: 80px; height: 80px; border-radius: 50%; margin-right: 20px;">
-                    <div>
-                        <div style="font-weight: bold; font-size: 32px; display: flex; align-items: center; gap: 8px;">Quang ICTU <span style="color: #1d9bf0; font-size: 28px;">✔</span></div>
-                        <div style="color: #888; font-size: 24px;">@quang_deptrai</div>
+        <body style="background: transparent; margin: 0; padding: 0;">
+            <div id="capture_area" style="padding: 60px; display: inline-block;">
+                <div style="background-color: #1e1e1e; border: 1px solid #333; border-radius: 16px; padding: 20px 25px; color: #f3f5f7; width: 650px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+                    <div style="display: flex; align-items: flex-start;">
+                        <img src="https://ui-avatars.com/api/?name=Quang+ICTU&background=random&color=fff&size=100" style="width: 50px; height: 50px; border-radius: 50%; margin-right: 15px; margin-top: 5px;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; font-size: 22px; margin-bottom: 5px;">Quang ICTU</div>
+                            <div style="font-size: 26px; line-height: 1.45; margin-bottom: 15px; font-weight: 400;">
+                                {safe_text}
+                            </div>
+                            <div style="color: #71767b; font-size: 18px; display: flex; gap: 20px; align-items: center;">
+                                <span>4 ngày</span>
+                                <span style="font-weight: 600; color: #f3f5f7;">Thích</span>
+                                <span style="font-weight: 600; color: #f3f5f7;">Trả lời</span>
+                                <span style="margin-left: auto;">647 👍😂</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div style="font-size: 38px; line-height: 1.5; margin-bottom: 30px;">
-                    {safe_text}
-                </div>
-                <div style="color: #888; font-size: 26px; display: flex; gap: 40px; border-top: 1px solid #444; padding-top: 20px;">
-                    <span>❤️ 15.2 N</span>
-                    <span>💬 843</span>
-                    <span>🔁 2.1 N</span>
                 </div>
             </div>
         </body>
         </html>
         """
         page.set_content(html_content)
-        # omit_background=True LÀ CHÌA KHÓA: Nó làm nền trong suốt để lộ Minecraft ra!
-        page.locator("#card").screenshot(path="assets/temp/png/title.png", omit_background=True)
+        # Chụp vùng capture_area (có viền tàng hình) thay vì chụp sát cái thẻ
+        page.locator("#capture_area").screenshot(path="assets/temp/png/title.png", omit_background=True)
         browser.close()
 
 def run_process(url):
@@ -93,7 +94,7 @@ def run_process(url):
         st.write("🎙️ Đang tạo giọng AI...")
         length, _ = save_text_to_mp3(reddit_obj)
         
-        st.write("📸 Đang dựng ảnh giao diện chuẩn Threads...")
+        st.write("📸 Đang dựng thẻ bình luận chuẩn Auth...")
         tao_anh_giao_dien_threads_gia(text)
 
         st.write("🎞️ Đang xử lý video nền...")
@@ -115,7 +116,7 @@ def run_process(url):
 st.set_page_config(page_title="Threads Bot - Quang ICTU")
 st.title("🧵 Threads Video Maker")
 st.markdown(f"```\n{BANNER}\n```")
-st.subheader("Dự án của Quang - ICTU (Bản Đẹp Không Tì Vết)")
+st.subheader("Dự án của Quang - ICTU (Bản Giao Diện Tinh Tế)")
 
 st.markdown("### 1️⃣ Tải video nền (Minecraft/Parkour...)")
 uploaded_video = st.file_uploader("📂 Chọn file .mp4 của bạn", type=["mp4"])
