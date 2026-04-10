@@ -1,4 +1,3 @@
-pydantic==2.10.2
 playwright
 streamlit
 moviepy
@@ -19,3 +18,4 @@ praw
 boto3
 botocore
 elevenlabs
+pydantic
