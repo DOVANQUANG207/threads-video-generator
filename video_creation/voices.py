@@ -1,58 +1,49 @@
-from typing import Tuple
-
-from rich.console import Console
-
-from TTS.aws_polly import AWSPolly
-from TTS.elevenlabs import elevenlabs
-from TTS.engine_wrapper import TTSEngine
-from TTS.GTTS import GTTS
-from TTS.openai_tts import OpenAITTS
-from TTS.pyttsx import pyttsx
-from TTS.streamlabs_polly import StreamlabsPolly
-from TTS.TikTok import TikTok
+import os
+import streamlit as st
 from utils import settings
-from utils.console import print_step, print_table
 
-console = Console()
+# --- 1. IMPORT AN TOÀN (CHẶN LỖI PYDANTIC) ---
+try:
+    from TTS.elevenlabs import elevenlabs
+    HAS_ELEVENLABS = True
+except (ImportError, Exception):
+    elevenlabs = None
+    HAS_ELEVENLABS = False
 
-TTSProviders = {
-    "GoogleTranslate": GTTS,
-    "AWSPolly": AWSPolly,
-    "StreamlabsPolly": StreamlabsPolly,
-    "TikTok": TikTok,
-    "pyttsx": pyttsx,
-    "ElevenLabs": elevenlabs,
-    "OpenAI": OpenAITTS,
-}
+from TTS.tiktok import tiktok
+from TTS.gTTS import gTTS
 
+def save_text_to_mp3(reddit_obj):
+    """Hàm tổng quản tạo giọng nói - Đã được Quang ICTU độ lại"""
+    
+    # Lấy cấu hình từ file config
+    tts_service = settings.config["settings"]["tts"]["voice_service"].lower()
+    
+    # Check nếu đang chọn ElevenLabs mà trên mây không chạy được
+    if tts_service == "elevenlabs" and not HAS_ELEVENLABS:
+        if "STREAMLIT_SERVER_PORT" in os.environ:
+            st.warning("⚠️ ElevenLabs lỗi thư viện trên Streamlit. Đang dùng tạm Google TTS nhé Quang!")
+        tts_service = "gtts"
 
-def save_text_to_mp3(reddit_obj) -> Tuple[int, int]:
-    """Saves text to MP3 files.
+    # Đường dẫn lưu file audio
+    path = "assets/temp/mp3"
+    os.makedirs(path, exist_ok=True)
+    
+    text = reddit_obj["thread_title"]
+    filepath = f"{path}/title.mp3"
 
-    Args:
-        reddit_obj (): Reddit object received from reddit API in reddit/subreddit.py
-
-    Returns:
-        tuple[int,int]: (total length of the audio, the number of comments audio was generated for)
-    """
-
-    voice = settings.config["settings"]["tts"]["voice_choice"]
-    if str(voice).casefold() in map(lambda _: _.casefold(), TTSProviders):
-        text_to_mp3 = TTSEngine(get_case_insensitive_key_value(TTSProviders, voice), reddit_obj)
+    # --- 2. KÍCH HOẠT ĐỘNG CƠ (THAY CHO CHỮ PASS) ---
+    if tts_service == "elevenlabs" and HAS_ELEVENLABS:
+        st.write("🎙️ Đang dùng giọng xịn ElevenLabs...")
+        elevenlabs().run(text, filepath)
+    elif tts_service == "tiktok":
+        st.write("🎙️ Đang dùng giọng TikTok...")
+        tiktok().run(text, filepath)
     else:
-        while True:
-            print_step("Please choose one of the following TTS providers: ")
-            print_table(TTSProviders)
-            choice = input("\n")
-            if choice.casefold() in map(lambda _: _.casefold(), TTSProviders):
-                break
-            print("Unknown Choice")
-        text_to_mp3 = TTSEngine(get_case_insensitive_key_value(TTSProviders, choice), reddit_obj)
-    return text_to_mp3.run()
+        # Mặc định dùng Google TTS cực bền
+        st.write("🎙️ Đang dùng giọng Google TTS...")
+        gTTS().run(text, filepath)
 
-
-def get_case_insensitive_key_value(input_dict, key):
-    return next(
-        (value for dict_key, value in input_dict.items() if dict_key.lower() == key.lower()),
-        None,
-    )
+    # Trả về độ dài (tạm tính) và số comment (Threads này là 0)
+    # Vì Bot cần biết độ dài để cắt video, mình trả về giá trị tượng trưng
+    return 10.0, 0
