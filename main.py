@@ -2,27 +2,37 @@
 import os
 import sys
 import subprocess
-
-# --- BƯỚC 1: TỰ ĐỘNG CÀI TRÌNH DUYỆT & GIẢ LẬP CONFIG ---
-def setup_environment():
-    # Tạo config giả để không bị hỏi Reddit
-    if not os.path.exists("config.toml"):
-        with open("config.toml", "w", encoding="utf-8") as f:
-            f.write('[reddit]\nclient_id = "dummy"\nclient_secret = "dummy"\nusername = "dummy"\npassword = "dummy"\nuser_agent = "dummy"\n')
-    
-    # Tải trình duyệt cho Playwright (Chỉ chạy 1 lần trên Streamlit)
-    if "STREAMLIT_SERVER_PORT" in os.environ:
-        if not os.path.exists("/home/adminuser/.cache/ms-playwright"):
-            subprocess.run(["playwright", "install", "chromium"])
-
-setup_environment()
-
-import math
 import time
-import streamlit as st
+import math
 from pathlib import Path
-from typing import NoReturn
+
+# --- 1. TỰ ĐỘNG CÀI TRÌNH DUYỆT (FIX LỖI EXECUTABLE) ---
+def install_playwright_browsers():
+    try:
+        # Kiểm tra xem đã cài Chromium chưa, nếu chưa thì cài luôn
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+    except Exception as e:
+        print(f"⚠️ Lỗi cài trình duyệt: {e}")
+
+# Giả lập config Reddit để không bị treo Terminal
+if not os.path.exists("config.toml"):
+    with open("config.toml", "w", encoding="utf-8") as f:
+        f.write('[reddit]\nclient_id = "dummy"\nclient_secret = "dummy"\nusername = "dummy"\npassword = "dummy"\nuser_agent = "dummy"\n')
+
+import streamlit as st
 from playwright.sync_api import sync_playwright
+
+# --- IMPORT AN TOÀN ---
+try:
+    from threads_scraper import get_threads_content
+    from video_creation.background import (
+        chop_background, download_background_audio, 
+        download_background_video, get_background_config
+    )
+    from video_creation.final_video import make_final_video
+    from video_creation.voices import save_text_to_mp3
+except Exception:
+    pass
 
 BANNER = """
 ██████╗ ██╗   ██╗ █████╗ ███╗   ██╗ ██████╗ 
@@ -33,28 +43,17 @@ BANNER = """
  ╚═██╔═╝  ╚═════╝  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
 """
 
-# Import an toàn - Không hiện banner lỗi làm Quang lo lắng nữa
-try:
-    from threads_scraper import get_threads_content
-    from video_creation.background import (
-        chop_background, download_background_audio, 
-        download_background_video, get_background_config
-    )
-    from video_creation.final_video import make_final_video
-    from video_creation.voices import save_text_to_mp3
-    from utils.ffmpeg_install import ffmpeg_install
-except:
-    pass # Đã xử lý an toàn trong voices.py rồi
-
 def tao_anh_giao_dien_threads_gia(text):
     os.makedirs("assets/temp/png", exist_ok=True)
     with sync_playwright() as p:
+        # Cài trình duyệt trước khi launch để chắc ăn
+        install_playwright_browsers()
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(device_scale_factor=2)
         html_content = f"""
-        <div style="background:#000; color:white; padding:50px; border-radius:30px; font-family:sans-serif; font-size:40px; border:2px solid #333;">
+        <div style="background:#000; color:white; padding:50px; border-radius:30px; font-family:sans-serif; font-size:40px; border:2px solid #333; text-align:center;">
             <p style="color:#1d9bf0; font-weight:bold;">@Threads_Trending_Bot</p>
-            <div style="margin-top:20px;">{text}</div>
+            <div style="margin-top:20px; line-height:1.4;">{text}</div>
         </div>
         """
         page.set_content(html_content)
@@ -63,6 +62,10 @@ def tao_anh_giao_dien_threads_gia(text):
 
 def run_process(url):
     with st.status("🎬 Đang tạo video... Quang đợi tí nhé!", expanded=True) as status:
+        # BƯỚC QUAN TRỌNG: Cài đặt Chromium trước khi cào dữ liệu
+        st.write("🛠️ Đang kiểm tra trình duyệt ảo...")
+        install_playwright_browsers()
+        
         st.write("📡 Đang cào dữ liệu Threads...")
         text = get_threads_content(url)
         if not text:
@@ -73,7 +76,6 @@ def run_process(url):
         reddit_obj = {"thread_id": reddit_id, "thread_title": text, "thread_post": "", "comments": []}
 
         st.write("🎙️ Đang tạo giọng đọc AI...")
-        # Lấy độ dài từ hàm voices
         length, _ = save_text_to_mp3(reddit_obj)
         
         st.write("📸 Đang dựng ảnh bài viết...")
@@ -90,12 +92,11 @@ def run_process(url):
         
         status.update(label="✅ Xong rồi Quang ơi!", state="complete")
         
-        # Hiển thị video
         video_files = sorted(Path("video_output").glob("*.mp4"), key=os.path.getmtime)
         if video_files:
             st.video(str(video_files[-1]))
 
-# --- GIAO DIỆN CHÍNH ---
+# --- GIAO DIỆN ---
 st.set_page_config(page_title="Threads Bot - Quang ICTU")
 st.title("🧵 Threads Video Maker")
 st.markdown(f"```\n{BANNER}\n```")
