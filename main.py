@@ -3,10 +3,8 @@ import math
 import sys
 import time
 import os
-from os import name
 from pathlib import Path
-from subprocess import Popen
-from typing import Dict, NoReturn
+from typing import NoReturn
 from playwright.sync_api import sync_playwright
 
 # Module cào dữ liệu Threads của anh em mình
@@ -61,28 +59,56 @@ def tao_anh_giao_dien_threads_gia(text):
 
 def main(threads_url) -> None:
     global reddit_id, reddit_object
-    print_substep(f"🚀 Bắt đầu xử lý link: {threads_url}", style="bold blue")
     
-    threads_text = get_threads_content(threads_url)
-    if not threads_text:
-        print_step("❌ Lỗi: Không lấy được nội dung!")
-        return
+    # Kiểm tra môi trường để hiển thị UI
+    is_streamlit = "STREAMLIT_SERVER_PORT" in os.environ
+    
+    # Nếu chạy trên Streamlit, tạo một cái khung trạng thái cho đẹp
+    if is_streamlit:
+        import streamlit as st
+        status = st.status("🎬 Đang xử lý video... Quang đợi tí nhé!")
+    else:
+        status = None
 
-    reddit_id = "threads_" + str(int(time.time()))
-    reddit_object = {"thread_id": reddit_id, "thread_title": threads_text, "thread_post": "", "comments": []}
+    try:
+        print_substep(f"🚀 Bắt đầu xử lý link: {threads_url}", style="bold blue")
+        if is_streamlit: st.write("📡 Đang cào dữ liệu từ Threads...")
+        
+        threads_text = get_threads_content(threads_url)
+        if not threads_text:
+            if is_streamlit: st.error("❌ Không lấy được nội dung Threads rồi!")
+            return
 
-    length, _ = save_text_to_mp3(reddit_object)
-    length = math.ceil(length)
-    tao_anh_giao_dien_threads_gia(threads_text)
+        reddit_id = "threads_" + str(int(time.time()))
+        reddit_object = {"thread_id": reddit_id, "thread_title": threads_text, "thread_post": "", "comments": []}
 
-    bg_config = {"video": get_background_config("video"), "audio": get_background_config("audio")}
-    download_background_video(bg_config["video"])
-    download_background_audio(bg_config["audio"])
-    chop_background(bg_config, length, reddit_object)
+        if is_streamlit: st.write("🎙️ Đang tạo giọng đọc AI...")
+        length, _ = save_text_to_mp3(reddit_object)
+        length = math.ceil(length)
+        
+        if is_streamlit: st.write("📸 Đang dựng ảnh bài viết...")
+        tao_anh_giao_dien_threads_gia(threads_text)
 
-    print_step("🎬 Đang ghép video hoàn chỉnh...")
-    make_final_video(0, length, reddit_object, bg_config)
-    print_markdown(f"## 🎉 Xong rồi Quang ơi! Check video trong thư mục video_output nhé!")
+        if is_streamlit: st.write("🎥 Đang chuẩn bị video nền...")
+        bg_config = {"video": get_background_config("video"), "audio": get_background_config("audio")}
+        download_background_video(bg_config["video"])
+        download_background_audio(bg_config["audio"])
+        chop_background(bg_config, length, reddit_object)
+
+        if is_streamlit: st.write("⚙️ Đang Render video cuối cùng...")
+        make_final_video(0, length, reddit_object, bg_config)
+        
+        if is_streamlit:
+            status.update(label="🎉 Thành công rồi Quang ơi!", state="complete")
+            # Tìm file video mới nhất để hiển thị luôn lên web
+            video_files = sorted(Path("video_output").glob("*.mp4"), key=os.path.getmtime)
+            if video_files:
+                st.video(str(video_files[-1]))
+        
+        print_markdown(f"## 🎉 Xong rồi Quang ơi! Check thư mục video_output nhé!")
+    except Exception as e:
+        if is_streamlit: st.error(f"‼️ Lỗi rồi: {e}")
+        print(f"Lỗi: {e}")
 
 def shutdown() -> NoReturn:
     if "reddit_id" in globals():
@@ -90,28 +116,36 @@ def shutdown() -> NoReturn:
     sys.exit()
 
 if __name__ == "__main__":
-    # Kiểm tra xem có đang chạy trên Streamlit Cloud không
     is_streamlit = "STREAMLIT_SERVER_PORT" in os.environ
-    
+    directory = Path().absolute()
+
     if not is_streamlit:
+        # Chạy ở máy Quang (Local)
         print(BANNER)
         print_markdown("### Dự án Bot Video Threads - Quang ICTU Custom Edition")
         checkversion("3.4.0")
+        ffmpeg_install()
+        config = settings.check_toml(f"{directory}/utils/.config.template.toml", f"{directory}/config.toml")
+        if config is False: sys.exit()
     else:
+        # Chạy trên Streamlit (Cloud)
         import streamlit as st
+        st.set_page_config(page_title="Threads Video Maker - Quang ICTU")
         st.title("🧵 Threads Video Maker - By Quang")
+        st.markdown(f"```\n{BANNER}\n```") # Hiện banner ngầu lòi lên web luôn
+        ffmpeg_install()
 
-    ffmpeg_install()
-    directory = Path().absolute()
-    config = settings.check_toml(f"{directory}/utils/.config.template.toml", f"{directory}/config.toml")
-    
     try:
         if is_streamlit:
-            url = st.text_input("🔗 Nhập link bài viết Threads:")
+            url = st.text_input("🔗 Nhập link bài viết Threads vào đây:")
             if st.button("Làm Video ngay!"):
-                if url: main(url)
+                if url.strip():
+                    main(url.strip())
+                else:
+                    st.warning("Quang chưa nhập link kìa!")
         else:
             url = input("\n🔗 Nhập link bài viết Threads: ").strip()
-            if url: main(url)
+            if url:
+                main(url)
     except KeyboardInterrupt:
         shutdown()
