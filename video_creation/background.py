@@ -16,19 +16,19 @@ from utils.console import print_step, print_substep
 def load_background_options():
     _background_options = {"video": {}, "audio": {}}
     try:
-        # Load background videos
+        # Tải danh sách video nền
         video_path = "./utils/background_videos.json"
         if os.path.exists(video_path):
             with open(video_path) as json_file:
                 _background_options["video"] = json.load(json_file)
         
-        # Load background audios
+        # Tải danh sách nhạc nền
         audio_path = "./utils/background_audios.json"
         if os.path.exists(audio_path):
             with open(audio_path) as json_file:
                 _background_options["audio"] = json.load(json_file)
 
-        # Xử lý an toàn nếu thiếu key
+        # Xử lý các ghi chú trong file JSON
         if "__comment" in _background_options["video"]: del _background_options["video"]["__comment"]
         if "__comment" in _background_options["audio"]: del _background_options["audio"]["__comment"]
 
@@ -43,7 +43,6 @@ def load_background_options():
     return _background_options
 
 def get_start_and_end_times(video_length: int, length_of_clip: int) -> Tuple[int, int]:
-    initialValue = 180
     if int(length_of_clip) <= int(video_length):
         return 0, int(length_of_clip)
     
@@ -52,7 +51,7 @@ def get_start_and_end_times(video_length: int, length_of_clip: int) -> Tuple[int
     return random_time, random_time + video_length
 
 def get_background_config(mode: str):
-    """Lấy config background an toàn - Fix lỗi 403 Forbidden"""
+    """Lấy cấu hình background an toàn và hỗ trợ vượt lỗi 403."""
     try:
         config_section = settings.config.get("settings", {}).get("background", {})
         choice = str(config_section.get(f"background_{mode}", "")).casefold()
@@ -64,7 +63,7 @@ def get_background_config(mode: str):
         if options:
             choice = random.choice(list(options.keys()))
         else:
-            # Fallback nếu file JSON trống rỗng
+            # Fallback nếu không có dữ liệu JSON
             return ("https://www.youtube.com/watch?v=n_Dv46ThnEw", "minecraft.mp4", "mc_cre", "center")
 
     return options[choice]
@@ -75,9 +74,8 @@ def download_background_video(background_config: Tuple[str, str, str, Any]):
     save_path = f"assets/backgrounds/video/{credit}-{filename}"
     if Path(save_path).is_file(): return
     
-    print_step(f"📥 Đang thử tải video nền: {filename}")
+    print_step(f"📥 Đang chuẩn bị tải video nền: {filename}")
     
-    # --- THÊM USER-AGENT ĐỂ TRÁNH LỖI 403 FORBIDDEN ---
     ydl_opts = {
         "format": "bestvideo[height<=720][ext=mp4]", 
         "outtmpl": save_path,
@@ -86,12 +84,15 @@ def download_background_video(background_config: Tuple[str, str, str, Any]):
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     
+    # --- CẤU HÌNH COOKIE FILE ĐỂ VƯỢT RÀO ---
+    if os.path.exists("cookies.txt"):
+        ydl_opts["cookiefile"] = "cookies.txt"
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([uri])
     except Exception as e:
-        st.warning(f"⚠️ YouTube chặn tải video (403). Quang hãy tải thủ công file này lên thư mục 'assets/backgrounds/video/' trên GitHub nhé!")
-        # Tạo file tạm để tránh crash code ở bước sau
+        st.warning("⚠️ YouTube chặn tải (403). Đang sử dụng phương thức dự phòng hoặc yêu cầu upload thủ công.")
         if not os.path.exists(save_path):
             Path(save_path).touch()
 
@@ -101,7 +102,7 @@ def download_background_audio(background_config: Tuple[str, str, str]):
     save_path = f"assets/backgrounds/audio/{credit}-{filename}"
     if Path(save_path).is_file(): return
     
-    print_step(f"📥 Đang thử tải nhạc nền: {filename}")
+    print_step(f"📥 Đang chuẩn bị tải nhạc nền: {filename}")
     ydl_opts = {
         "outtmpl": save_path,
         "format": "bestaudio/best",
@@ -109,6 +110,9 @@ def download_background_audio(background_config: Tuple[str, str, str]):
         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
     
+    if os.path.exists("cookies.txt"):
+        ydl_opts["cookiefile"] = "cookies.txt"
+        
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([uri])
@@ -128,7 +132,7 @@ def chop_background(background_config: Dict[str, Tuple], video_length: int, redd
         volume = 0.15
 
     if volume > 0:
-        print_step("✂️ Đang cắt nhạc nền...")
+        print_step("✂️ Đang xử lý nhạc nền...")
         audio_choice = f"{background_config['audio'][2]}-{background_config['audio'][1]}"
         audio_full_path = f"assets/backgrounds/audio/{audio_choice}"
         if os.path.exists(audio_full_path) and os.path.getsize(audio_full_path) > 0:
@@ -136,7 +140,7 @@ def chop_background(background_config: Dict[str, Tuple], video_length: int, redd
                 start, end = get_start_and_end_times(video_length, background_audio.duration)
                 background_audio.subclipped(start, end).write_audiofile(f"{temp_path}/background.mp3", logger=None)
 
-    print_step("✂️ Đang cắt video nền...")
+    print_step("✂️ Đang xử lý video nền...")
     video_choice = f"{background_config['video'][2]}-{background_config['video'][1]}"
     video_full_path = f"assets/backgrounds/video/{video_choice}"
     
@@ -145,9 +149,8 @@ def chop_background(background_config: Dict[str, Tuple], video_length: int, redd
             start, end = get_start_and_end_times(video_length, video.duration)
             new_video = video.subclipped(start, end)
             new_video.write_videofile(f"{temp_path}/background.mp4", codec="libx264", audio=False, logger=None)
-    else:
-        st.error(f"❌ Không tìm thấy file video: {video_choice}. Quang nhớ upload lên GitHub nhé!")
     
     return background_config["video"][2]
 
+# Khởi tạo danh sách lựa chọn
 background_options = load_background_options()
