@@ -16,3 +16,4 @@ yt-dlp
 pandas
 numpy
 tqdm
+praw
