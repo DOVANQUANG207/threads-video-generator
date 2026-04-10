@@ -7,10 +7,9 @@ import math
 import random
 from pathlib import Path
 
-# --- 1. TỰ ĐỘNG CÀI TRÌNH DUYỆT (FIX LỖI EXECUTABLE) ---
+# --- 1. TỰ ĐỘNG CÀI TRÌNH DUYỆT ---
 def install_playwright_browsers():
     try:
-        # Kiểm tra xem đã cài Chromium chưa
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
     except Exception as e:
         print(f"⚠️ Lỗi cài trình duyệt: {e}")
@@ -61,7 +60,7 @@ def tao_anh_giao_dien_threads_gia(text):
         browser.close()
 
 def run_process(url):
-    with st.status("🎬 Đang tạo video... Quang nghỉ ngơi tí đi, tớ lo!", expanded=True) as status:
+    with st.status("🎬 Đang tạo video... Quang chuẩn bị nổ hũ nhé!", expanded=True) as status:
         st.write("🛠️ Đang kiểm tra trình duyệt ảo...")
         install_playwright_browsers()
         
@@ -80,22 +79,21 @@ def run_process(url):
         st.write("📸 Đang dựng ảnh bài viết...")
         tao_anh_giao_dien_threads_gia(text)
 
-        st.write("🎞️ Đang xử lý video nền (Ép dùng file có sẵn)...")
+        st.write("🎞️ Đang xử lý video nền...")
         bg_config = {"video": get_background_config("video"), "audio": get_background_config("audio")}
         
-        # --- BỘ LỌC PHÁP SƯ QUANG ICTU ---
+        # --- FIX LỖI: BỘ LỌC ÉP FILE DÀNH CHO QUANG ---
         video_folder = Path("assets/backgrounds/video")
         video_files = list(video_folder.glob("*.mp4"))
         
         if video_files:
-            # Nếu có file trong thư mục, ép nó dùng file đầu tiên tìm được
-            selected_video = random.choice(video_files)
-            st.write(f"✅ Đã tìm thấy file nền: {selected_video.name}. Không cần tải YouTube nữa!")
-            # Đánh lừa Bot bằng cách gán đường dẫn file có sẵn vào config
-            bg_config["video"]["uri"] = str(selected_video)
+            # Chọn đại 1 file mp4 trong thư mục video
+            selected_video = str(random.choice(video_files))
+            st.write(f"✅ Đã tìm thấy file: {selected_video}. Dùng luôn cho nét!")
+            # Ép cấu hình video thành một Dictionary chứa đường dẫn path
+            bg_config["video"] = {"path": selected_video} 
         else:
-            # Nếu không có file nào mới phải tải (dễ lỗi 403)
-            st.warning("⚠️ Không thấy file nào trong thư mục video. Đang thử tải...")
+            st.warning("⚠️ Không thấy file video nào. Đang thử tải...")
             download_background_video(bg_config["video"])
         
         download_background_audio(bg_config["audio"])
@@ -104,15 +102,13 @@ def run_process(url):
         st.write("🚀 Đang Render video cuối cùng...")
         make_final_video(0, math.ceil(length), reddit_obj, bg_config)
         
-        status.update(label="✅ Xong rồi Quang ơi! Nổ hũ thôi!", state="complete")
+        status.update(label="✅ Xong rồi Quang ơi!", state="complete")
         
         video_output_dir = Path("video_output")
         if video_output_dir.exists():
             final_videos = sorted(video_output_dir.glob("*.mp4"), key=os.path.getmtime)
             if final_videos:
                 st.video(str(final_videos[-1]))
-            else:
-                st.error("Lỗi: Render xong nhưng không thấy file đầu ra.")
 
 # --- GIAO DIỆN ---
 st.set_page_config(page_title="Threads Bot - Quang ICTU")
