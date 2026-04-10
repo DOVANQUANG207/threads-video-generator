@@ -2,6 +2,7 @@ import json
 import random
 import re
 import os
+import streamlit as st
 from pathlib import Path
 from random import randrange
 from typing import Any, Dict, Tuple
@@ -46,27 +47,24 @@ def get_start_and_end_times(video_length: int, length_of_clip: int) -> Tuple[int
     if int(length_of_clip) <= int(video_length):
         return 0, int(length_of_clip)
     
-    # Rút gọn logic để tránh treo vòng lặp
     max_start = max(0, int(length_of_clip) - int(video_length) - 5)
     random_time = randrange(0, max_start) if max_start > 0 else 0
     return random_time, random_time + video_length
 
 def get_background_config(mode: str):
-    """Lấy config background an toàn - Fix bởi Quang ICTU"""
+    """Lấy config background an toàn - Fix lỗi 403 Forbidden"""
     try:
-        # Dùng .get để không bao giờ bị TypeError
         config_section = settings.config.get("settings", {}).get("background", {})
         choice = str(config_section.get(f"background_{mode}", "")).casefold()
     except Exception:
         choice = None
 
-    # Nếu không có lựa chọn hoặc lựa chọn không tồn tại, lấy ngẫu nhiên
     options = background_options.get(mode, {})
     if not choice or choice not in options:
         if options:
             choice = random.choice(list(options.keys()))
         else:
-            # Fallback nếu file JSON trống rỗng (dành cho Streamlit)
+            # Fallback nếu file JSON trống rỗng
             return ("https://www.youtube.com/watch?v=n_Dv46ThnEw", "minecraft.mp4", "mc_cre", "center")
 
     return options[choice]
@@ -77,14 +75,25 @@ def download_background_video(background_config: Tuple[str, str, str, Any]):
     save_path = f"assets/backgrounds/video/{credit}-{filename}"
     if Path(save_path).is_file(): return
     
-    print_step(f"📥 Đang tải video nền: {filename}")
+    print_step(f"📥 Đang thử tải video nền: {filename}")
+    
+    # --- THÊM USER-AGENT ĐỂ TRÁNH LỖI 403 FORBIDDEN ---
     ydl_opts = {
-        "format": "bestvideo[height<=720][ext=mp4]", # Giảm xuống 720p cho nhẹ server Streamlit
+        "format": "bestvideo[height<=720][ext=mp4]", 
         "outtmpl": save_path,
         "retries": 5,
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([uri])
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([uri])
+    except Exception as e:
+        st.warning(f"⚠️ YouTube chặn tải video (403). Quang hãy tải thủ công file này lên thư mục 'assets/backgrounds/video/' trên GitHub nhé!")
+        # Tạo file tạm để tránh crash code ở bước sau
+        if not os.path.exists(save_path):
+            Path(save_path).touch()
 
 def download_background_audio(background_config: Tuple[str, str, str]):
     Path("./assets/backgrounds/audio/").mkdir(parents=True, exist_ok=True)
@@ -92,32 +101,37 @@ def download_background_audio(background_config: Tuple[str, str, str]):
     save_path = f"assets/backgrounds/audio/{credit}-{filename}"
     if Path(save_path).is_file(): return
     
-    print_step(f"📥 Đang tải nhạc nền: {filename}")
+    print_step(f"📥 Đang thử tải nhạc nền: {filename}")
     ydl_opts = {
         "outtmpl": save_path,
         "format": "bestaudio/best",
+        "nocheckcertificate": True,
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([uri])
+    
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([uri])
+    except Exception as e:
+        print(f"⚠️ Lỗi tải audio: {e}")
+        if not os.path.exists(save_path):
+            Path(save_path).touch()
 
 def chop_background(background_config: Dict[str, Tuple], video_length: int, reddit_object: dict):
     thread_id = re.sub(r"[^\w\s-]", "", reddit_object["thread_id"])
     temp_path = f"assets/temp/{thread_id}"
     os.makedirs(temp_path, exist_ok=True)
 
-    # Kiểm tra volume an toàn
     try:
         volume = settings.config.get("settings", {}).get("background", {}).get("background_audio_volume", 0.15)
     except:
         volume = 0.15
 
-    if volume == 0:
-        print_step("🔇 Nhạc nền tắt.")
-    else:
+    if volume > 0:
         print_step("✂️ Đang cắt nhạc nền...")
         audio_choice = f"{background_config['audio'][2]}-{background_config['audio'][1]}"
         audio_full_path = f"assets/backgrounds/audio/{audio_choice}"
-        if os.path.exists(audio_full_path):
+        if os.path.exists(audio_full_path) and os.path.getsize(audio_full_path) > 0:
             with AudioFileClip(audio_full_path) as background_audio:
                 start, end = get_start_and_end_times(video_length, background_audio.duration)
                 background_audio.subclipped(start, end).write_audiofile(f"{temp_path}/background.mp3", logger=None)
@@ -126,13 +140,14 @@ def chop_background(background_config: Dict[str, Tuple], video_length: int, redd
     video_choice = f"{background_config['video'][2]}-{background_config['video'][1]}"
     video_full_path = f"assets/backgrounds/video/{video_choice}"
     
-    if os.path.exists(video_full_path):
+    if os.path.exists(video_full_path) and os.path.getsize(video_full_path) > 0:
         with VideoFileClip(video_full_path) as video:
             start, end = get_start_and_end_times(video_length, video.duration)
             new_video = video.subclipped(start, end)
             new_video.write_videofile(f"{temp_path}/background.mp4", codec="libx264", audio=False, logger=None)
+    else:
+        st.error(f"❌ Không tìm thấy file video: {video_choice}. Quang nhớ upload lên GitHub nhé!")
     
     return background_config["video"][2]
 
-# Khởi tạo options
 background_options = load_background_options()
