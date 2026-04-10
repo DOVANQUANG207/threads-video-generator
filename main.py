@@ -1,19 +1,21 @@
 #!/usr/bin/env python
 import math
 import sys
+import time
+import os
 from os import name
 from pathlib import Path
 from subprocess import Popen
 from typing import Dict, NoReturn
+from playwright.sync_api import sync_playwright
 
-from prawcore import ResponseException
+# Module cào dữ liệu Threads của anh em mình
+from threads_scraper import get_threads_content
 
-from reddit.subreddit import get_subreddit_threads
 from utils import settings
 from utils.cleanup import cleanup
 from utils.console import print_markdown, print_step, print_substep
 from utils.ffmpeg_install import ffmpeg_install
-from utils.id import extract_id
 from utils.version import checkversion
 from video_creation.background import (
     chop_background,
@@ -22,38 +24,77 @@ from video_creation.background import (
     get_background_config,
 )
 from video_creation.final_video import make_final_video
-from video_creation.screenshot_downloader import get_screenshots_of_reddit_posts
 from video_creation.voices import save_text_to_mp3
 
-__VERSION__ = "3.4.0"
+__VERSION__ = "3.4.0 (Threads Edition)"
 
 print(
     """
-██████╗ ███████╗██████╗ ██████╗ ██╗████████╗    ██╗   ██╗██╗██████╗ ███████╗ ██████╗     ███╗   ███╗ █████╗ ██╗  ██╗███████╗██████╗
-██╔══██╗██╔════╝██╔══██╗██╔══██╗██║╚══██╔══╝    ██║   ██║██║██╔══██╗██╔════╝██╔═══██╗    ████╗ ████║██╔══██╗██║ ██╔╝██╔════╝██╔══██╗
-██████╔╝█████╗  ██║  ██║██║  ██║██║   ██║       ██║   ██║██║██║  ██║█████╗  ██║   ██║    ██╔████╔██║███████║█████╔╝ █████╗  ██████╔╝
-██╔══██╗██╔══╝  ██║  ██║██║  ██║██║   ██║       ╚██╗ ██╔╝██║██║  ██║██╔══╝  ██║   ██║    ██║╚██╔╝██║██╔══██║██╔═██╗ ██╔══╝  ██╔══██╗
-██║  ██║███████╗██████╔╝██████╔╝██║   ██║        ╚████╔╝ ██║██████╔╝███████╗╚██████╔╝    ██║ ╚═╝ ██║██║  ██║██║  ██╗███████╗██║  ██║
-╚═╝  ╚═╝╚══════╝╚═════╝ ╚═════╝ ╚═╝   ╚═╝         ╚═══╝  ╚═╝╚═════╝ ╚══════╝ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝
-"""
+██████╗ ██╗   ██╗ █████╗ ███╗   ██╗ ██████╗ 
+██╔═══██╗██║   ██║██╔══██╗████╗  ██║██╔════╝ 
+██║   ██║██║   ██║███████║██╔██╗ ██║██║  ███╗
+██║██╗██║██║   ██║██╔══██║██║╚██╗██║██║   ██║
+╚██████╔╝╚██████╔╝██║  ██║██║ ╚████║╚██████╔╝
+ ╚═██╔═╝  ╚═════╝  ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+    """
 )
-print_markdown(
-    "### Thanks for using this tool! Feel free to contribute to this project on GitHub! If you have any questions, feel free to join my Discord server or submit a GitHub issue. You can find solutions to many common problems in the documentation: https://reddit-video-maker-bot.netlify.app/"
-)
-checkversion(__VERSION__)
+print_markdown("### Dự án Bot Video Threads - Quang ICTU Custom Edition")
 
-reddit_id: str
-reddit_object: Dict[str, str | list]
+def tao_anh_giao_dien_threads_gia(text):
+    """Sử dụng Playwright để tạo ảnh giao diện Threads ảo thay cho screenshot Reddit"""
+    print_step("📸 Đang tạo ảnh giao diện Threads ảo...")
+    
+    html_content = f"""
+    <html style="background: transparent;">
+    <body style="background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+        <div style="background-color: rgba(10, 10, 10, 0.95); color: white; padding: 60px; border-radius: 40px; font-size: 48px; max-width: 1000px; text-align: center; border: 1px solid #333; box-shadow: 0 15px 50px rgba(0,0,0,0.8);">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 30px;">
+                <div style="width: 80px; height: 80px; background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); border-radius: 50%; margin-right: 20px;"></div>
+                <p style="color: #fff; font-weight: 800; margin: 0; font-size: 40px;">threads_vn_trending</p>
+            </div>
+            <p style="line-height: 1.4; letter-spacing: -0.5px;">{text}</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    os.makedirs("assets/temp/png", exist_ok=True)
+    
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(device_scale_factor=2)
+        page.set_content(html_content)
+        # Chụp ảnh và lưu đúng đường dẫn bot cũ cần
+        page.locator("div").first.screenshot(path="assets/temp/png/title.png", omit_background=True)
+        browser.close()
+    print_substep("✅ Đã tạo xong ảnh title.png", style="bold green")
 
-
-def main(POST_ID=None) -> None:
+def main(threads_url) -> None:
     global reddit_id, reddit_object
-    reddit_object = get_subreddit_threads(POST_ID)
-    reddit_id = extract_id(reddit_object)
-    print_substep(f"Thread ID is {reddit_id}", style="bold blue")
+    
+    # 1. Cào dữ liệu
+    threads_text = get_threads_content(threads_url)
+    if not threads_text:
+        print_step("❌ Lỗi: Không lấy được nội dung từ Threads!")
+        return
+
+    # 2. Tạo ID và Object giả lập (Mocking)
+    reddit_id = "threads_" + str(int(time.time()))
+    reddit_object = {
+        "thread_id": reddit_id,
+        "thread_title": threads_text,
+        "thread_post": "",
+        "comments": [] 
+    }
+
+    # 3. Tạo giọng đọc MP3
     length, number_of_comments = save_text_to_mp3(reddit_object)
     length = math.ceil(length)
-    get_screenshots_of_reddit_posts(reddit_object, number_of_comments)
+
+    # 4. Tạo ảnh giả lập
+    tao_anh_giao_dien_threads_gia(threads_text)
+
+    # 5. Xử lý video nền
     bg_config = {
         "video": get_background_config("video"),
         "audio": get_background_config("audio"),
@@ -61,76 +102,35 @@ def main(POST_ID=None) -> None:
     download_background_video(bg_config["video"])
     download_background_audio(bg_config["audio"])
     chop_background(bg_config, length, reddit_object)
-    make_final_video(number_of_comments, length, reddit_object, bg_config)
 
-
-def run_many(times) -> None:
-    for x in range(1, times + 1):
-        print_step(
-            f'on the {x}{("th", "st", "nd", "rd", "th", "th", "th", "th", "th", "th")[x % 10]} iteration of {times}'
-        )
-        main()
-        Popen("cls" if name == "nt" else "clear", shell=True).wait()
-
+    # 6. Render Video cuối cùng
+    print_step("🎬 Đang ghép video hoàn chỉnh (Final Rendering)...")
+    make_final_video(0, length, reddit_object, bg_config)
+    print_markdown(f"## 🎉 Xong rồi Quang ơi! Video lưu tại thư mục video_output")
 
 def shutdown() -> NoReturn:
     if "reddit_id" in globals():
-        print_markdown("## Clearing temp files")
         cleanup(reddit_id)
-
-    print("Exiting...")
     sys.exit()
 
-
 if __name__ == "__main__":
-    if sys.version_info.major != 3 or sys.version_info.minor not in [10, 11, 12]:
-        print(
-            "Hey! Congratulations, you've made it so far (which is pretty rare with no Python 3.10). Unfortunately, this program only works on Python 3.10. Please install Python 3.10 and try again."
-        )
-        sys.exit()
+    checkversion("3.4.0")
     ffmpeg_install()
     directory = Path().absolute()
-    config = settings.check_toml(
-        f"{directory}/utils/.config.template.toml", f"{directory}/config.toml"
-    )
-    config is False and sys.exit()
-
-    if (
-        not settings.config["settings"]["tts"]["tiktok_sessionid"]
-        or settings.config["settings"]["tts"]["tiktok_sessionid"] == ""
-    ) and config["settings"]["tts"]["voice_choice"] == "tiktok":
-        print_substep(
-            "TikTok voice requires a sessionid! Check our documentation on how to obtain one.",
-            "bold red",
-        )
+    
+    # Kiểm tra config
+    config = settings.check_toml(f"{directory}/utils/.config.template.toml", f"{directory}/config.toml")
+    if config is False:
         sys.exit()
+
     try:
-        if config["reddit"]["thread"]["post_id"]:
-            for index, post_id in enumerate(config["reddit"]["thread"]["post_id"].split("+")):
-                index += 1
-                print_step(
-                    f'on the {index}{("st" if index % 10 == 1 else ("nd" if index % 10 == 2 else ("rd" if index % 10 == 3 else "th")))} post of {len(config["reddit"]["thread"]["post_id"].split("+"))}'
-                )
-                main(post_id)
-                Popen("cls" if name == "nt" else "clear", shell=True).wait()
-        elif config["settings"]["times_to_run"]:
-            run_many(config["settings"]["times_to_run"])
+        url = input("\n🔗 Nhập link bài viết Threads: ").strip()
+        if url:
+            main(url)
         else:
-            main()
+            print("Link không được để trống!")
     except KeyboardInterrupt:
         shutdown()
-    except ResponseException:
-        print_markdown("## Invalid credentials")
-        print_markdown("Please check your credentials in the config.toml file")
-        shutdown()
-    except Exception as err:
-        config["settings"]["tts"]["tiktok_sessionid"] = "REDACTED"
-        config["settings"]["tts"]["elevenlabs_api_key"] = "REDACTED"
-        config["settings"]["tts"]["openai_api_key"] = "REDACTED"
-        print_step(
-            f"Sorry, something went wrong with this version! Try again, and feel free to report this issue at GitHub or the Discord community.\n"
-            f"Version: {__VERSION__} \n"
-            f"Error: {err} \n"
-            f'Config: {config["settings"]}'
-        )
-        raise err
+    except Exception as e:
+        print(f"‼️ Lỗi phát sinh: {e}")
+        raise e
