@@ -1,63 +1,64 @@
-import random
 import os
-
-# --- CHIÊU THỨC SAFE IMPORT CỦA ANH EM ICTU ---
-try:
-    from elevenlabs import save
-    from elevenlabs.client import ElevenLabs
-    HAS_ELEVENLABS = True
-except ImportError:
-    HAS_ELEVENLABS = False
-
+import streamlit as st
 from utils import settings
 
-class elevenlabs:
-    def __init__(self):
-        self.max_chars = 2500
-        self.client = None
+# --- CHIÊU THỨC "DỌN ĐƯỜNG" CỦA QUANG ICTU ---
+# Thử import từng ông, ông nào thiếu thì cho qua để app không sập
 
-    def run(self, text, filepath, random_voice: bool = False):
-        # Nếu không có thư viện, báo lỗi nhẹ nhàng thay vì làm sập app
-        if not HAS_ELEVENLABS:
-            print("⚠️ ElevenLabs chưa được cài đặt hoặc bị lỗi Pydantic. Đang bỏ qua...")
-            return False
+try:
+    from TTS.elevenlabs import elevenlabs
+    HAS_ELEVENLABS = True
+except:
+    elevenlabs = None
+    HAS_ELEVENLABS = False
 
-        if self.client is None:
-            self.initialize()
-            
-        try:
-            if random_voice:
-                voice = self.randomvoice()
-            else:
-                voice = str(settings.config["settings"]["tts"]["elevenlabs_voice_name"]).capitalize()
+try:
+    from TTS.tiktok import tiktok
+    HAS_TIKTOK = True
+except:
+    tiktok = None
+    HAS_TIKTOK = False
 
-            audio = self.client.generate(text=text, voice=voice, model="eleven_multilingual_v1")
-            save(audio=audio, filename=filepath)
-            return True
-        except Exception as e:
-            print(f"❌ Lỗi ElevenLabs: {e}")
-            return False
+# Đối với Google TTS (gTTS)
+try:
+    # Thử lấy từ thư mục TTS nếu có file wrapper
+    from TTS.gTTS import gTTS
+    HAS_GTTS = True
+except:
+    # Nếu không có file TTS/gTTS.py, ta tự tạo một class dùng thư viện gtts gốc
+    try:
+        from gtts import gTTS as gTTS_lib
+        class gTTS_wrapper:
+            def run(self, text, filepath):
+                tts = gTTS_lib(text=text, lang='vi') # Mặc định tiếng Việt cho Threads VN
+                tts.save(filepath)
+        gTTS = gTTS_wrapper
+        HAS_GTTS = True
+    except:
+        gTTS = None
+        HAS_GTTS = False
 
-    def initialize(self):
-        if not HAS_ELEVENLABS:
-            return
+def save_text_to_mp3(reddit_obj):
+    """Hàm tổng quản tạo giọng nói - Đã fix lỗi module missing"""
+    
+    # Mặc định dùng Google cho an toàn nhất
+    tts_service = "gtts" 
+    
+    path = "assets/temp/mp3"
+    os.makedirs(path, exist_ok=True)
+    text = reddit_obj["thread_title"]
+    filepath = f"{path}/title.mp3"
 
-        if settings.config["settings"]["tts"]["elevenlabs_api_key"]:
-            api_key = settings.config["settings"]["tts"]["elevenlabs_api_key"]
-        else:
-            # Thay vì báo lỗi sập app, mình chỉ in ra cảnh báo
-            print("⚠️ Chưa có ElevenLabs API Key.")
-            return
+    # --- CHỌN ĐỘNG CƠ CHẠY ---
+    if tts_service == "elevenlabs" and HAS_ELEVENLABS:
+        elevenlabs().run(text, filepath)
+    elif tts_service == "tiktok" and HAS_TIKTOK:
+        tiktok().run(text, filepath)
+    elif HAS_GTTS:
+        # Google TTS là lựa chọn bền bỉ nhất
+        gTTS().run(text, filepath)
+    else:
+        st.error("❌ Không tìm thấy động cơ giọng đọc nào cả! Quang check lại thư mục TTS nhé.")
+        return 0, 0
 
-        try:
-            self.client = ElevenLabs(api_key=api_key)
-        except Exception:
-            self.client = None
-
-    def randomvoice(self):
-        if not HAS_ELEVENLABS or self.client is None:
-            return "Adam" # Trả về tên mặc định nếu lỗi
-        try:
-            return random.choice(self.client.voices.get_all().voices).name
-        except Exception:
-            return "Adam"
+    return 10.0, 0
