@@ -18,4 +18,4 @@ praw
 boto3
 botocore
 elevenlabs
-pydantic
+pydantic==1.10.13
