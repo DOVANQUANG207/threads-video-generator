@@ -1,3 +1,4 @@
+elevenlabs
 boto3
 botocore
 praw
@@ -20,3 +21,4 @@ yt-dlp
 pandas
 numpy
 tqdm
+edge-tts
